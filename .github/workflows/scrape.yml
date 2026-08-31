@@ -22,7 +22,7 @@ jobs:
         run: pip install requests
 
       - name: Run scraper
-        run: python dairy_prices.py
+        run: python dairy_prices_worker.py
 
       - name: Commit updated database
         run: |
