@@ -34,8 +34,8 @@ QUERY_STRING = "proteiini"
 LIMIT = 24
 
 # How many product DETAIL pages we are allowed to hit per run.
-# Raise slowly once the DB is mostly filled (e.g. 40–50).
-NUTRITION_SCRAPES_PER_RUN = 25
+# Raised only after DB is mostly filled – keep low to avoid 429.
+NUTRITION_SCRAPES_PER_RUN = 12
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -54,8 +54,9 @@ HTML_HEADERS = {
     "Connection": "keep-alive",
 }
 
-PAGE_DELAY = 8.0          # base delay between detail pages (seconds)
-LISTING_DELAY = 2.5
+# Increased delays to reduce rate‑limiting pressure
+PAGE_DELAY = 15.0          # base delay between detail pages (seconds)
+LISTING_DELAY = 5.0        # delay between listing API page requests
 MAX_RETRIES = 6
 
 PROTEIN_RE = re.compile(r"Proteiinia\D{0,20}?(\d+(?:[,.]\d+)?)\s*g", re.IGNORECASE)
@@ -108,6 +109,7 @@ def init_db(conn):
 
 
 def fetch_listing_page(slug, query_string, offset):
+    """Fetch one page of listing results with retry & backoff on 429."""
     variables = {
         "facets": [
             {"key": "brandName", "order": "asc"},
@@ -135,12 +137,34 @@ def fetch_listing_page(slug, query_string, offset):
         f"&variables={quote(params['variables'])}"
         f"&extensions={quote(params['extensions'])}"
     )
-    response = session.get(url, timeout=15)
-    response.raise_for_status()
-    data = response.json()
-    if "errors" in data:
-        raise RuntimeError(json.dumps(data["errors"]))
-    return data.get("data", {}).get("store", {}).get("products", {}).get("items", [])
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            response = session.get(url, timeout=15)
+
+            if response.status_code == 429:
+                retry_after = int(response.headers.get("Retry-After", 0))
+                wait = max(retry_after, (2 ** attempt) * 4) + random.uniform(1, 5)
+                print(
+                    f"  [429] listing page – sleeping {wait:.1f}s "
+                    f"(attempt {attempt}/{MAX_RETRIES})"
+                )
+                time.sleep(wait)
+                continue
+
+            response.raise_for_status()
+            data = response.json()
+            if "errors" in data:
+                raise RuntimeError(json.dumps(data["errors"]))
+            return data.get("data", {}).get("store", {}).get("products", {}).get("items", [])
+
+        except requests.exceptions.RequestException as e:
+            print(f"  [error] listing page offset={offset}: {e}")
+            if attempt == MAX_RETRIES:
+                return []   # give up on this page
+            time.sleep(5 + random.uniform(1, 3))
+
+    return []   # fallback
 
 
 def extract_product_id(product: dict):
@@ -177,11 +201,7 @@ def collect_products(category_label, slug):
     results = []
     first_product_logged = False
     while True:
-        try:
-            items = fetch_listing_page(slug, QUERY_STRING, offset)
-        except Exception as e:
-            print(f"  [error] {category_label} offset={offset}: {e}")
-            break
+        items = fetch_listing_page(slug, QUERY_STRING, offset)
         if not items:
             break
         if not first_product_logged:
@@ -199,7 +219,8 @@ def collect_products(category_label, slug):
             f"(total so far {len(results)})"
         )
         offset += LIMIT
-        time.sleep(LISTING_DELAY + random.uniform(0.3, 1.0))
+        # longer delay between listing pages
+        time.sleep(LISTING_DELAY + random.uniform(0.5, 2.0))
     return results
 
 
@@ -210,7 +231,8 @@ def scrape_nutrition(url):
             resp = session.get(url, headers=HTML_HEADERS, timeout=20)
 
             if resp.status_code == 429:
-                wait = min(120, (2 ** attempt) * 4 + random.uniform(1, 4))
+                retry_after = int(resp.headers.get("Retry-After", 0))
+                wait = max(retry_after, (2 ** attempt) * 4) + random.uniform(1, 4)
                 print(
                     f"    [429] rate limited – sleeping {wait:.1f}s "
                     f"(attempt {attempt}/{MAX_RETRIES})"
@@ -341,7 +363,7 @@ def main():
             if kcal_100g is not None:
                 calories_per_kg = kcal_100g * 10
             # polite pause after every real scrape
-            time.sleep(PAGE_DELAY + random.uniform(1.0, 3.0))
+            time.sleep(PAGE_DELAY + random.uniform(1.0, 4.0))
 
         price_per_kg = comparison_price if comparison_price is not None else price
         calories_per_gram_protein = (
@@ -370,6 +392,9 @@ def main():
             f"    price/kg={price_per_kg} protein/kg={protein_per_kg} "
             f"kcal/kg={calories_per_kg} kcal/g_protein={calories_per_gram_protein}"
         )
+
+        # Short pause even when no nutrition scrape, to smooth out request rate
+        time.sleep(random.uniform(0.5, 1.5))
 
     conn.close()
     print(
