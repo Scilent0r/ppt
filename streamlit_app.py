@@ -52,19 +52,25 @@ if df.empty:
     st.warning("No data in the database yet.")
     st.stop()
 
+# Ensure numeric dtypes (SQLite sometimes returns mixed types)
+for col in [
+    "price",
+    "price_per_kg",
+    "protein_per_kg",
+    "calories_per_kg",
+    "calories_per_gram_protein",
+]:
+    df[col] = pd.to_numeric(df[col], errors="coerce")
+
 # --- Sorting controls ---
 SORT_PRICE = "Price per kilo (cheapest first)"
 SORT_EFFICIENCY = "Kcal per gram of protein (most efficient first)"
-
 sort_choice = st.radio(
     "Sort by",
     [SORT_PRICE, SORT_EFFICIENCY],
     horizontal=True,
 )
 
-# Primary = whichever the user picked, secondary = the other one, so ties
-# resolve sensibly. Default radio selection is SORT_PRICE, which gives the
-# requested default order: price per kilo, then kcal per gram of protein.
 if sort_choice == SORT_PRICE:
     sort_cols = ["price_per_kg", "calories_per_gram_protein"]
 else:
@@ -74,22 +80,13 @@ display_df = df.sort_values(
     by=sort_cols, ascending=[True, True], na_position="last"
 ).reset_index(drop=True)
 
-# --- Category filter (keeps the table manageable) ---
+# --- Category filter ---
 categories = sorted(display_df["category"].dropna().unique())
 selected_categories = st.multiselect("Category", categories, default=categories)
 display_df = display_df[display_df["category"].isin(selected_categories)]
 
-# --- Formatting for display ---
-show_df = display_df.copy()
-show_df["price"] = show_df["price"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "-")
-show_df["price_per_kg"] = show_df["price_per_kg"].map(lambda x: f"{x:.2f}" if pd.notna(x) else "-")
-show_df["protein_per_kg"] = show_df["protein_per_kg"].map(lambda x: f"{x:.1f}" if pd.notna(x) else "-")
-show_df["calories_per_kg"] = show_df["calories_per_kg"].map(lambda x: f"{x:.0f}" if pd.notna(x) else "-")
-show_df["calories_per_gram_protein"] = show_df["calories_per_gram_protein"].map(
-    lambda x: f"{x:.3f}" if pd.notna(x) else "-"
-)
-
-show_df = show_df.rename(
+# Keep numbers as numbers – only rename columns for display
+show_df = display_df.rename(
     columns={
         "name": "Product",
         "category": "Category",
@@ -122,6 +119,13 @@ st.dataframe(
     use_container_width=True,
     hide_index=True,
     column_config={
+        "Price (€)": st.column_config.NumberColumn("Price (€)", format="%.2f"),
+        "€/kg": st.column_config.NumberColumn("€/kg", format="%.2f"),
+        "Protein g/kg": st.column_config.NumberColumn("Protein g/kg", format="%.1f"),
+        "kcal/kg": st.column_config.NumberColumn("kcal/kg", format="%.0f"),
+        "kcal per g protein": st.column_config.NumberColumn(
+            "kcal per g protein", format="%.3f"
+        ),
         "Link": st.column_config.LinkColumn("Link", display_text="Open"),
     },
 )
