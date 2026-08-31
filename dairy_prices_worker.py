@@ -37,20 +37,6 @@ Usage:
     python dairy_prices.py
 """
 
-
-"""
-dairy_prices.py
-Scrapes protein yogurt / dairy dessert products from s-kaupat.fi and
-stores name, price/kg, protein/kg and calories/kg into SQLite.
-Overwrites (UPSERTs) previous values on collision by product id.
-Built on the same GraphQL pattern as beer_prices.py for the *listing*
-(RemoteFilteredProducts, same persisted query hash, just a different
-slug + queryString). The listing API almost certainly does NOT return
-nutrition data (protein/calories) - that lives in a table on each
-product's own detail page - so this adds a second pass: for every
-product found, GET its detail page HTML directly with requests and
-regex out the nutrition table.
-"""
 import json
 import random
 import re
