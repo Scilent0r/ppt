@@ -62,6 +62,9 @@ for col in [
 ]:
     df[col] = pd.to_numeric(df[col], errors="coerce")
 
+# Price per gram of protein = price/kg divided by protein g/kg
+df["price_per_gram_protein"] = df["price_per_kg"] / df["protein_per_kg"]
+
 # --- Sorting controls ---
 SORT_PRICE = "Price per kilo (cheapest first)"
 SORT_EFFICIENCY = "Kcal per gram of protein (most efficient first)"
@@ -95,6 +98,7 @@ show_df = display_df.rename(
         "protein_per_kg": "Protein g/kg",
         "calories_per_kg": "kcal/kg",
         "calories_per_gram_protein": "kcal per g protein",
+        "price_per_gram_protein": "€ per g protein",
         "source_unit": "Priced per",
         "url": "Link",
         "last_updated": "Updated",
@@ -109,6 +113,7 @@ column_order = [
     "Protein g/kg",
     "kcal/kg",
     "kcal per g protein",
+    "€ per g protein",
     "Priced per",
     "Updated",
     "Link",
@@ -125,6 +130,9 @@ st.dataframe(
         "kcal/kg": st.column_config.NumberColumn("kcal/kg", format="%.0f"),
         "kcal per g protein": st.column_config.NumberColumn(
             "kcal per g protein", format="%.3f"
+        ),
+        "€ per g protein": st.column_config.NumberColumn(
+            "€ per g protein", format="%.4f"
         ),
         "Link": st.column_config.LinkColumn("Link", display_text="Open"),
     },
