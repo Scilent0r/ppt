@@ -126,11 +126,14 @@ def fetch_listing_page(slug, query_string, offset):
         "marketingId": "e5b2ded0-b696-44f7-afdd-c5dc73ac20f4",
         "from": offset,
     }
-    extensions = {"persistedQuery": {"version": 1, "sha256Hash": CURRENT_SHA256}}
+    # Remove the persisted query approach
+    extensions = {}  # or omit extensions entirely
+    
+    # Or use a standard GraphQL query
     params = {
         "operationName": "RemoteFilteredProducts",
         "variables": json.dumps(variables),
-        "extensions": json.dumps(extensions),
+        # Don't include extensions with persistedQuery
     }
     url = (
         f"{BASE_URL}?operationName={params['operationName']}"
