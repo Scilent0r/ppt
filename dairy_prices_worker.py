@@ -128,13 +128,19 @@ def fetch_listing_page(slug, query_string, offset):
     }
     # Remove the persisted query approach
     extensions = {}  # or omit extensions entirely
-    
+
     # Or use a standard GraphQL query
     params = {
         "operationName": "RemoteFilteredProducts",
         "variables": json.dumps(variables),
-        # Don't include extensions with persistedQuery
+        # include an explicit extensions entry (empty object) to match the URL builder below
+        "extensions": json.dumps(extensions),
     }
+    url = (
+        f"{BASE_URL}?operationName={params['operationName']}"
+        f"&variables={quote(params['variables'])}"
+        f"&extensions={quote(params['extensions'])}"
+    )
     url = (
         f"{BASE_URL}?operationName={params['operationName']}"
         f"&variables={quote(params['variables'])}"
